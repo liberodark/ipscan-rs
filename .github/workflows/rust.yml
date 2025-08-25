@@ -1,0 +1,235 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "master" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config
+      - name: Install Rust
+        run: |
+          rustup update 1.86.0
+          rustup default 1.86.0
+          rustup component add rustfmt clippy
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
+  test:
+    name: Test
+    needs: check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable, beta]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config
+      - name: Install Rust
+        run: |
+          rustup update ${{ matrix.rust }}
+          rustup default ${{ matrix.rust }}
+      - name: Build
+        run: cargo build --verbose
+      - name: Run tests
+        run: cargo test --verbose
+
+  build:
+    name: Build Linux
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config
+      - name: Install Rust
+        run: |
+          rustup update stable
+          rustup default stable
+      - name: Build release
+        run: cargo build --release --verbose
+      - name: Set version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      - name: Create tarball
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cd target/release
+          tar -czvf ipscan-rs-${{ env.VERSION }}-linux-x86_64.tar.gz ipscan-rs
+          cd ../..
+      - name: Upload binary artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipscan-rs-linux
+          path: |
+            target/release/ipscan-rs
+            target/release/ipscan-rs-gui
+      - name: Upload tarball artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipscan-rs-linux-tarball
+          path: target/release/ipscan-rs-${{ env.VERSION }}-linux-x86_64.tar.gz
+
+  build-windows:
+    name: Build Windows
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install Rust
+        run: |
+          rustup update stable
+          rustup default stable
+      - name: Build release
+        run: cargo build --release --verbose
+      - name: Set version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $env:GITHUB_ENV
+        shell: bash
+      - name: Create archive
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cd target/release
+          7z a -tzip ipscan-rs-${{ env.VERSION }}-windows-x86_64.zip ipscan-rs.exe ipscan-rs-gui.exe
+          cd ../..
+      - name: Upload binary artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipscan-rs-windows
+          path: |
+            target/release/ipscan-rs.exe
+            target/release/ipscan-rs-gui.exe
+      - name: Upload archive artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipscan-rs-windows-archive
+          path: target/release/ipscan-rs-${{ env.VERSION }}-windows-x86_64.zip
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, build-windows]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      - name: Download Linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: ipscan-rs-linux
+          path: ./
+      - name: Download Linux tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: ipscan-rs-linux-tarball
+          path: ./
+      - name: Download Windows binary
+        uses: actions/download-artifact@v4
+        with:
+          name: ipscan-rs-windows
+          path: ./
+      - name: Download Windows archive
+        uses: actions/download-artifact@v4
+        with:
+          name: ipscan-rs-windows-archive
+          path: ./
+      - name: Make executables
+        run: |
+          chmod +x ipscan-rs
+          chmod +x ipscan-rs-gui
+      - name: Rename binaries
+        run: |
+          mv ipscan-rs ipscan-rs-${{ env.VERSION }}-linux-x86_64
+          mv ipscan-rs-gui ipscan-rs-gui-${{ env.VERSION }}-linux-x86_64
+          mv ipscan-rs.exe ipscan-rs-${{ env.VERSION }}-windows-x86_64.exe
+          mv ipscan-rs-gui.exe ipscan-rs-gui-${{ env.VERSION }}-windows-x86_64.exe
+      - name: Extract changelog
+        id: changelog
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            # Extract content between the latest version header and the next version header
+            CHANGELOG=$(awk "/^## \[${{ env.VERSION }}\]/ {flag=1;next} /^## \[/ {flag=0} flag" CHANGELOG.md | tr -d '\r')
+            if [ -z "$CHANGELOG" ]; then
+              CHANGELOG="Release version ${{ env.VERSION }}"
+            fi
+            echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+            echo "$CHANGELOG" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+          else
+            echo "CHANGELOG=Release version ${{ env.VERSION }}" >> $GITHUB_ENV
+          fi
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ipscan-rs-${{ env.VERSION }}-linux-x86_64
+            ipscan-rs-gui-${{ env.VERSION }}-linux-x86_64
+            ipscan-rs-${{ env.VERSION }}-linux-x86_64.tar.gz
+            ipscan-rs-${{ env.VERSION }}-windows-x86_64.exe
+            ipscan-rs-gui-${{ env.VERSION }}-windows-x86_64.exe
+            ipscan-rs-${{ env.VERSION }}-windows-x86_64.zip
+          body: ${{ env.CHANGELOG }}
+          draft: false
+          prerelease: false
