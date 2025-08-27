@@ -133,6 +133,11 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install npcap
+        run: |
+          Invoke-WebRequest -Uri "https://npcap.com/dist/npcap-sdk-1.15.zip" -OutFile "npcap-sdk.zip"
+          Expand-Archive -Path "npcap-sdk.zip" -DestinationPath "npcap-sdk"
+          echo "LIB=$env:LIB;$pwd\npcap-sdk\Lib\x64" >> $env:GITHUB_ENV
       - name: Install Rust
         run: |
           rustup update stable
