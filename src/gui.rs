@@ -36,6 +36,17 @@ enum ScanState {
     },
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum SortColumn {
+    IpAddress,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum SortOrder {
+    Ascending,
+    Descending,
+}
+
 struct IpScanApp {
     start_ip: String,
     end_ip: String,
@@ -66,6 +77,9 @@ struct IpScanApp {
     use_cidr: bool,
     cidr_input: String,
     selected_mask: String,
+
+    sort_column: Option<SortColumn>,
+    sort_order: SortOrder,
 }
 
 #[derive(Clone)]
@@ -136,6 +150,9 @@ impl Default for IpScanApp {
             use_cidr: false,
             cidr_input: "192.168.1.0/24".to_string(),
             selected_mask: "/24".to_string(),
+
+            sort_column: None,
+            sort_order: SortOrder::Ascending,
         }
     }
 }
@@ -279,6 +296,31 @@ impl IpScanApp {
         );
 
         Some((first_ip, last_ip, total_hosts))
+    }
+
+    fn parse_ip_for_sorting(ip_str: &str) -> Option<IpAddr> {
+        ip_str.parse().ok()
+    }
+
+    fn sort_results(&mut self) {
+        if self.sort_column.is_some() {
+            let mut results = self.results.lock().unwrap();
+
+            results.sort_by(|a, b| {
+                let cmp = match (
+                    Self::parse_ip_for_sorting(&a.address),
+                    Self::parse_ip_for_sorting(&b.address),
+                ) {
+                    (Some(ip_a), Some(ip_b)) => ip_a.cmp(&ip_b),
+                    _ => a.address.cmp(&b.address),
+                };
+
+                match self.sort_order {
+                    SortOrder::Ascending => cmp,
+                    SortOrder::Descending => cmp.reverse(),
+                }
+            });
+        }
     }
 
     fn start_scan(&mut self) {
@@ -965,18 +1007,20 @@ impl eframe::App for IpScanApp {
 
             ui.separator();
 
-            let results = self.results.lock().unwrap();
-            let filtered_results: Vec<_> = results
-                .iter()
-                .filter(|r| {
-                    (self.show_dead || r.status != ResultType::Dead)
-                        && (self.filter_text.is_empty()
-                            || r.address.contains(&self.filter_text)
-                            || r.hostname.contains(&self.filter_text)
-                            || r.ports.contains(&self.filter_text))
-                })
-                .cloned()
-                .collect();
+            let filtered_results: Vec<_> = {
+                let results = self.results.lock().unwrap();
+                results
+                    .iter()
+                    .filter(|r| {
+                        (self.show_dead || r.status != ResultType::Dead)
+                            && (self.filter_text.is_empty()
+                                || r.address.contains(&self.filter_text)
+                                || r.hostname.contains(&self.filter_text)
+                                || r.ports.contains(&self.filter_text))
+                    })
+                    .cloned()
+                    .collect()
+            };
 
             let table = TableBuilder::new(ui)
                 .striped(true)
@@ -989,7 +1033,27 @@ impl eframe::App for IpScanApp {
                 .column(Column::remainder()) // Ports
                 .header(25.0, |mut header| {
                     header.col(|ui| {
-                        ui.strong("IP Address");
+                        let response = ui.add(
+                            egui::Label::new(egui::RichText::new("IP Address").strong())
+                                .sense(egui::Sense::click()),
+                        );
+
+                        if response.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
+
+                        if response.clicked() {
+                            if self.sort_column == Some(SortColumn::IpAddress) {
+                                self.sort_order = match self.sort_order {
+                                    SortOrder::Ascending => SortOrder::Descending,
+                                    SortOrder::Descending => SortOrder::Ascending,
+                                };
+                            } else {
+                                self.sort_column = Some(SortColumn::IpAddress);
+                                self.sort_order = SortOrder::Ascending;
+                            }
+                            self.sort_results();
+                        }
                     });
                     header.col(|ui| {
                         ui.strong("Ping");

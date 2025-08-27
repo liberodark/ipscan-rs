@@ -27,6 +27,7 @@ pkgs.mkShell {
 
   shellHook = ''
     rustfmt --edition 2024 src/*.rs
+    rm -f "$HOME/.cargo/advisory-db..lock"
     cargo audit
     export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [
       pkgs.xorg.libX11
