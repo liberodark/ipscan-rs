@@ -3,7 +3,7 @@ use eframe::egui;
 use egui_extras::{Column, TableBuilder};
 use ipscan_rs::{
     Feeder, FetcherRegistry, RangeFeeder, ResultType, ScannerConfig, ScanningResult,
-    ScanningSubject,
+    ScanningSubject, network_utils,
 };
 use std::net::IpAddr;
 use std::process::Command;
@@ -120,9 +120,19 @@ impl Default for Settings {
 impl Default for IpScanApp {
     fn default() -> Self {
         let settings = Settings::default();
+
+        let (start_ip, end_ip, cidr_input) =
+            network_utils::get_local_network().unwrap_or_else(|| {
+                (
+                    "192.168.0.1".to_string(),
+                    "192.168.0.254".to_string(),
+                    "192.168.0.0/24".to_string(),
+                )
+            });
+
         Self {
-            start_ip: "192.168.0.1".to_string(),
-            end_ip: "192.168.0.254".to_string(),
+            start_ip,
+            end_ip,
             port_string: "21-23,25,80,110,139,443,445,3389,8080".to_string(),
             threads: settings.threads,
             ping_timeout: settings.ping_timeout,
@@ -148,7 +158,7 @@ impl Default for IpScanApp {
             _context_menu_pos: egui::Pos2::new(0.0, 0.0),
 
             use_cidr: false,
-            cidr_input: "192.168.1.0/24".to_string(),
+            cidr_input,
             selected_mask: "/24".to_string(),
 
             sort_column: None,
@@ -298,18 +308,14 @@ impl IpScanApp {
         Some((first_ip, last_ip, total_hosts))
     }
 
-    fn parse_ip_for_sorting(ip_str: &str) -> Option<IpAddr> {
-        ip_str.parse().ok()
-    }
-
     fn sort_results(&mut self) {
         if self.sort_column.is_some() {
             let mut results = self.results.lock().unwrap();
 
             results.sort_by(|a, b| {
                 let cmp = match (
-                    Self::parse_ip_for_sorting(&a.address),
-                    Self::parse_ip_for_sorting(&b.address),
+                    network_utils::parse_ip_for_sorting(&a.address),
+                    network_utils::parse_ip_for_sorting(&b.address),
                 ) {
                     (Some(ip_a), Some(ip_b)) => ip_a.cmp(&ip_b),
                     _ => a.address.cmp(&b.address),

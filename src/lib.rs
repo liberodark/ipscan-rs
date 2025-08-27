@@ -1,5 +1,6 @@
 pub mod config;
 pub mod errors;
+pub mod network_utils;
 
 pub mod core {
     pub mod port_iterator;
