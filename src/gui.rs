@@ -7,6 +7,7 @@ use ipscan_rs::{
 };
 use std::net::IpAddr;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::runtime::Runtime;
@@ -80,6 +81,8 @@ struct IpScanApp {
 
     sort_column: Option<SortColumn>,
     sort_order: SortOrder,
+
+    scan_cancellation: Option<Arc<AtomicBool>>,
 }
 
 #[derive(Clone)]
@@ -163,6 +166,8 @@ impl Default for IpScanApp {
 
             sort_column: None,
             sort_order: SortOrder::Ascending,
+
+            scan_cancellation: None,
         }
     }
 }
@@ -358,6 +363,13 @@ impl IpScanApp {
             }
         };
 
+        if let Some(cancel) = &self.scan_cancellation {
+            cancel.store(true, Ordering::Relaxed);
+        }
+
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        self.scan_cancellation = Some(cancel_flag.clone());
+
         self.results.lock().unwrap().clear();
         self.total_hosts = 0;
         self.alive_hosts = 0;
@@ -412,6 +424,12 @@ impl IpScanApp {
                     let mut tasks = tokio::task::JoinSet::new();
 
                     while let Some(address) = feeder.next_address().await {
+                        if cancel_flag.load(Ordering::Relaxed) {
+                            *scan_state.lock().unwrap() = ScanState::Idle;
+                            *status_message.lock().unwrap() = "Scan cancelled".to_string();
+                            return;
+                        }
+
                         let permit = semaphore.clone().acquire_owned().await.unwrap();
                         let fetcher_registry = fetcher_registry.clone();
                         let config = config.clone();
@@ -522,8 +540,13 @@ impl IpScanApp {
     }
 
     fn stop_scan(&mut self) {
+        if let Some(cancel) = &self.scan_cancellation {
+            cancel.store(true, Ordering::Relaxed);
+        }
+
         *self.scan_state.lock().unwrap() = ScanState::Idle;
         *self.status_message.lock().unwrap() = "Scan stopped".to_string();
+        self.scan_cancellation = None;
     }
 
     fn export_results(&self, format: &str) {
