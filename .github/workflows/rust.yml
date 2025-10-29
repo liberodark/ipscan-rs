@@ -105,7 +105,7 @@ jobs:
           tar -czvf ipscan-rs-${{ env.VERSION }}-linux-x86_64.tar.gz ipscan-rs
           cd ../..
       - name: Upload binary artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ipscan-rs-linux
           path: |
@@ -113,7 +113,7 @@ jobs:
             target/release/ipscan-rs-gui
       - name: Upload tarball artifact
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ipscan-rs-linux-tarball
           path: target/release/ipscan-rs-${{ env.VERSION }}-linux-x86_64.tar.gz
@@ -155,7 +155,7 @@ jobs:
           7z a -tzip ipscan-rs-${{ env.VERSION }}-windows-x86_64.zip ipscan-rs.exe ipscan-rs-gui.exe
           cd ../..
       - name: Upload binary artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ipscan-rs-windows
           path: |
@@ -163,7 +163,7 @@ jobs:
             target/release/ipscan-rs-gui.exe
       - name: Upload archive artifact
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ipscan-rs-windows-archive
           path: target/release/ipscan-rs-${{ env.VERSION }}-windows-x86_64.zip
