@@ -38,10 +38,10 @@ impl MacFetcher {
             let result = String::from_utf8_lossy(&output.stdout);
             if result.contains("lladdr") {
                 let parts: Vec<&str> = result.split_whitespace().collect();
-                if let Some(pos) = parts.iter().position(|&x| x == "lladdr") {
-                    if let Some(mac) = parts.get(pos + 1) {
-                        return Some(mac.to_uppercase());
-                    }
+                if let Some(pos) = parts.iter().position(|&x| x == "lladdr")
+                    && let Some(mac) = parts.get(pos + 1)
+                {
+                    return Some(mac.to_uppercase());
                 }
             }
         }
