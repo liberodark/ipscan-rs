@@ -18,7 +18,7 @@ name = "ipscan-rs-gui"
 path = "src/gui.rs"
 
 [dependencies]
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }
 tokio = { version = "1.50", features = ["full"] }
 pnet = "0.35"
 dns-lookup = "3.0"
